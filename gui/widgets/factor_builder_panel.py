@@ -3396,30 +3396,92 @@ class FactorBuilderPanel(QWidget):
         self.stock_pool_combo.setStyleSheet(self._get_combo_style())
         config_layout.addRow("股票池:", self.stock_pool_combo)
         
-        # 因子选择
-        self.factor_list = QListWidget()
-        self.factor_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
-        self.factor_list.setMaximumHeight(150)
-        self.factor_list.setStyleSheet(f"""
-            QListWidget {{
+        # 因子选择 - 分类显示
+        factor_frame = QFrame()
+        factor_frame.setStyleSheet(f"""
+            QFrame {{
                 background-color: {Colors.BG_SECONDARY};
                 border: 1px solid {Colors.BORDER_PRIMARY};
                 border-radius: 6px;
-                color: {Colors.TEXT_PRIMARY};
-            }}
-            QListWidget::item:selected {{
-                background-color: {Colors.PRIMARY}30;
-                color: {Colors.PRIMARY};
             }}
         """)
+        factor_layout = QVBoxLayout(factor_frame)
+        factor_layout.setContentsMargins(10, 10, 10, 10)
+        factor_layout.setSpacing(8)
         
-        for cat_data in FACTOR_DATABASE.values():
+        # 快捷选择按钮
+        quick_btns = QHBoxLayout()
+        select_all_btn = QPushButton("全选")
+        select_all_btn.setStyleSheet(f"padding: 4px 10px; background: {Colors.BG_TERTIARY}; color: {Colors.TEXT_SECONDARY}; border-radius: 4px;")
+        select_all_btn.clicked.connect(self._select_all_factors)
+        quick_btns.addWidget(select_all_btn)
+        
+        clear_all_btn = QPushButton("清空")
+        clear_all_btn.setStyleSheet(f"padding: 4px 10px; background: {Colors.BG_TERTIARY}; color: {Colors.TEXT_SECONDARY}; border-radius: 4px;")
+        clear_all_btn.clicked.connect(self._clear_all_factors)
+        quick_btns.addWidget(clear_all_btn)
+        
+        quick_btns.addStretch()
+        factor_layout.addLayout(quick_btns)
+        
+        # 分类因子复选框
+        self.factor_checkboxes = {}
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setMaximumHeight(200)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setSpacing(6)
+        
+        for cat_id, cat_data in FACTOR_DATABASE.items():
+            # 分类标题
+            cat_label = QLabel(f"{cat_data['icon']} {cat_data['name']}")
+            cat_label.setStyleSheet(f"font-weight: 600; color: {Colors.TEXT_PRIMARY}; margin-top: 5px;")
+            scroll_layout.addWidget(cat_label)
+            
+            # 因子复选框 - 横向排列
+            factors_row = QHBoxLayout()
             for factor in cat_data['factors']:
-                item = QListWidgetItem(f"{cat_data['icon']} {factor['name']}")
-                item.setData(Qt.ItemDataRole.UserRole, factor['id'])
-                self.factor_list.addItem(item)
+                cb = QCheckBox(factor['name'])
+                cb.setStyleSheet(f"color: {Colors.TEXT_SECONDARY};")
+                cb.setProperty("factor_id", factor['id'])
+                self.factor_checkboxes[factor['id']] = cb
+                factors_row.addWidget(cb)
+            factors_row.addStretch()
+            scroll_layout.addLayout(factors_row)
         
-        config_layout.addRow("选择因子:", self.factor_list)
+        scroll_area.setWidget(scroll_widget)
+        factor_layout.addWidget(scroll_area)
+        
+        config_layout.addRow("选择因子:", factor_frame)
+        
+        # 投资标的选择
+        target_frame = QFrame()
+        target_frame.setStyleSheet(f"QFrame {{ background: transparent; }}")
+        target_layout = QHBoxLayout(target_frame)
+        target_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.target_input = QLineEdit()
+        self.target_input.setPlaceholderText("输入股票代码，如: 000001, 600519 （逗号分隔，留空使用股票池）")
+        self.target_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {Colors.BG_SECONDARY};
+                border: 1px solid {Colors.BORDER_PRIMARY};
+                border-radius: 6px;
+                padding: 8px;
+                color: {Colors.TEXT_PRIMARY};
+            }}
+        """)
+        target_layout.addWidget(self.target_input)
+        
+        load_pool_btn = QPushButton("📂 从候选池加载")
+        load_pool_btn.setStyleSheet(f"padding: 8px 12px; background: {Colors.BG_TERTIARY}; color: {Colors.TEXT_SECONDARY}; border-radius: 6px;")
+        load_pool_btn.clicked.connect(self._load_from_candidate_pool)
+        target_layout.addWidget(load_pool_btn)
+        
+        config_layout.addRow("投资标的:", target_frame)
         
         layout.addWidget(config_frame)
         
@@ -3715,8 +3777,22 @@ sorted_stocks = factor_value.sort_values(
             else:
                 stocks = jq.get_index_stocks(pool_map[pool_name])
             
-            # 获取可用日期
-            date = self.jq_client.get_available_date() if self.jq_client else datetime.now().strftime('%Y-%m-%d')
+            # 获取JQData权限范围内的可用日期（关键！试用版限制）
+            date = None
+            if self.jq_client:
+                try:
+                    perm = self.jq_client.get_permission()
+                    if perm and hasattr(perm, 'end_date'):
+                        date = perm.end_date
+                        logger.info(f"JQData权限日期: {perm.start_date} 至 {perm.end_date}")
+                except:
+                    pass
+            
+            if not date:
+                # JQData试用账户默认日期（避免超出权限范围）
+                date = "2025-08-29"
+            
+            logger.info(f"因子计算使用日期: {date}")
             
             # 因子名称映射（从FACTOR_DATABASE到实际因子名）
             factor_map = {
@@ -3727,17 +3803,37 @@ sorted_stocks = factor_value.sort_values(
                 'size': 'Size', 'volatility': 'Volatility', 'turnover': 'Turnover'
             }
             
+            # 获取选中的因子（从复选框）
+            factor_names = []
+            for factor_id, cb in self.factor_checkboxes.items():
+                if cb.isChecked():
+                    factor_name = factor_map.get(factor_id.lower(), factor_id)
+                    if factor_name in self.factor_manager.list_factors():
+                        factor_names.append(factor_name)
+            
+            # 检查自定义投资标的
+            custom_targets = self.target_input.text().strip()
+            if custom_targets:
+                # 解析用户输入的股票代码
+                codes = [c.strip() for c in custom_targets.replace('，', ',').split(',') if c.strip()]
+                custom_stocks = []
+                for code in codes:
+                    if len(code) == 6:
+                        if code.startswith('6'):
+                            custom_stocks.append(f"{code}.XSHG")
+                        else:
+                            custom_stocks.append(f"{code}.XSHE")
+                    else:
+                        custom_stocks.append(code)
+                if custom_stocks:
+                    stocks = custom_stocks
+                    logger.info(f"使用自定义投资标的: {len(stocks)}只股票")
+            
             # 计算因子
             self.progress_bar.setVisible(True)
             self.progress_bar.setValue(0)
             
             results = {}
-            factor_names = []
-            for item in selected_items:
-                factor_id = item.data(Qt.ItemDataRole.UserRole)
-                factor_name = factor_map.get(factor_id.lower(), factor_id)
-                if factor_name in self.factor_manager.list_factors():
-                    factor_names.append(factor_name)
             
             if not factor_names:
                 QMessageBox.warning(self, "提示", "所选因子在当前因子库中不存在")
@@ -3761,7 +3857,72 @@ sorted_stocks = factor_value.sort_values(
             
         except Exception as e:
             logger.error(f"因子计算失败: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(self, "错误", f"因子计算失败:\n{e}")
+    
+    def _select_all_factors(self):
+        """全选因子"""
+        for cb in self.factor_checkboxes.values():
+            cb.setChecked(True)
+    
+    def _clear_all_factors(self):
+        """清空因子选择"""
+        for cb in self.factor_checkboxes.values():
+            cb.setChecked(False)
+    
+    def _load_from_candidate_pool(self):
+        """从候选池加载股票"""
+        try:
+            from pymongo import MongoClient
+            
+            client = MongoClient("mongodb://localhost:27017", serverSelectionTimeoutMS=2000)
+            db = client.jqquant
+            
+            # 获取最新的主线映射
+            latest = db.mainline_mapped.find_one(sort=[("timestamp", -1)])
+            if not latest:
+                QMessageBox.warning(self, "提示", "候选池为空，请先在投资主线中计算综合评分")
+                return
+            
+            mainlines = latest.get("mainlines", [])
+            
+            # 获取所有主线的JQData代码
+            import jqdatasdk as jq
+            
+            all_stocks = set()
+            perm = self.jq_client.get_permission() if self.jq_client else None
+            date = perm.end_date if perm else "2025-08-29"
+            
+            for ml in mainlines[:10]:  # 限制主线数量
+                jq_code = ml.get("jqdata_code")
+                jq_type = ml.get("jqdata_type", "concept")
+                
+                if not jq_code:
+                    continue
+                
+                try:
+                    if jq_type == "industry":
+                        stocks = jq.get_industry_stocks(jq_code, date=date)
+                    else:
+                        stocks = jq.get_concept_stocks(jq_code, date=date)
+                    
+                    if stocks:
+                        all_stocks.update(stocks[:20])  # 每个主线最多20只
+                except Exception as e:
+                    logger.warning(f"获取成分股失败 {jq_code}: {e}")
+            
+            if all_stocks:
+                # 转换为简化代码格式
+                simple_codes = [code.split('.')[0] for code in all_stocks]
+                self.target_input.setText(', '.join(simple_codes[:50]))  # 限制数量
+                QMessageBox.information(self, "成功", f"已从候选池加载 {len(simple_codes[:50])} 只股票")
+            else:
+                QMessageBox.warning(self, "提示", "未能获取候选池股票")
+                
+        except Exception as e:
+            logger.error(f"从候选池加载失败: {e}")
+            QMessageBox.warning(self, "错误", f"加载失败: {e}")
     
     def _display_factor_results(self, results: dict):
         """显示因子计算结果"""

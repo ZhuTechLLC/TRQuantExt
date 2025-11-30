@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QTableWidget, QTableWidgetItem, QHeaderView,
     QScrollArea, QProgressBar, QComboBox, QMessageBox,
-    QCheckBox, QSplitter, QGridLayout
+    QCheckBox, QSplitter, QGridLayout, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl
 from PyQt6.QtGui import QPixmap
@@ -125,7 +125,11 @@ class CompositeDimensionTab(QWidget):
         self.report_path = None
         self.selected_indices = set()
         self.checkboxes = []
+        self._cached_data = None  # 缓存上次结果
         self.setup_ui()
+        
+        # 初始化时自动加载缓存
+        self._load_cached_results()
     
     def setup_ui(self):
         # 主布局
@@ -453,10 +457,12 @@ class CompositeDimensionTab(QWidget):
         
         layout.addLayout(header_layout)
         
-        # 雷达图显示区 - 固定尺寸
+        # 雷达图显示区 - 放大尺寸，自适应窗口
         self.radar_label = QLabel()
         self.radar_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.radar_label.setFixedSize(450, 450)
+        self.radar_label.setMinimumSize(600, 600)  # 最小尺寸放大
+        self.radar_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.radar_label.setScaledContents(False)  # 保持图片比例
         self.radar_label.setText("请先计算综合评分\n然后在表格中选择要对比的主线")
         self.radar_label.setStyleSheet(f"""
             QLabel {{
@@ -754,6 +760,97 @@ class CompositeDimensionTab(QWidget):
         except Exception as e:
             logger.error(f"JQData映射失败: {e}")
     
+    def _load_cached_results(self):
+        """加载缓存的综合评分结果（初始化时自动调用）"""
+        try:
+            # 先尝试从MongoDB加载
+            from pymongo import MongoClient
+            
+            client = MongoClient("mongodb://localhost:27017", serverSelectionTimeoutMS=2000)
+            client.server_info()  # 测试连接
+            db = client.jqquant
+            
+            # 查找最新的主线映射记录
+            latest = db.mainline_mapped.find_one(sort=[("timestamp", -1)])
+            
+            if latest:
+                mainlines = latest.get("mainlines", [])
+                period = latest.get("period", "")
+                record_date = latest.get("date", "")
+                timestamp = latest.get("timestamp", "")
+                
+                if mainlines:
+                    logger.info(f"✅ 从MongoDB加载缓存: {len(mainlines)}个主线, 日期={record_date}, 周期={period}")
+                    
+                    # 转换为FiveDimensionResult格式用于显示
+                    from markets.ashare.mainline.five_dimension_engine import FiveDimensionResult, DimensionScore
+                    
+                    self.results = []
+                    for ml in mainlines:
+                        result = FiveDimensionResult(
+                            name=ml.get("name", ""),
+                            type=ml.get("mainline_type", "concept"),
+                            total_score=ml.get("total_score", 0),
+                            funds_score=DimensionScore(score=ml.get("funds_score", 0), level="中"),
+                            heat_score=DimensionScore(score=ml.get("heat_score", 0), level="中"),
+                            momentum_score=DimensionScore(score=ml.get("momentum_score", 0), level="中"),
+                            policy_score=DimensionScore(score=ml.get("policy_score", 0), level="中"),
+                            leader_score=DimensionScore(score=ml.get("leader_score", 0), level="中"),
+                            leader_stock=ml.get("leader_stock", ""),
+                            leader_change=ml.get("leader_change", 0),
+                            signal=ml.get("signal", "")
+                        )
+                        self.results.append(result)
+                    
+                    # 更新UI显示
+                    if self.results:
+                        self._update_table()
+                        self.status_label.setText(f"📂 已加载缓存数据 ({record_date} {period})")
+                    return
+            
+        except Exception as e:
+            logger.debug(f"MongoDB缓存加载失败: {e}")
+        
+        # 备选：从本地文件加载
+        try:
+            cache_file = Path.home() / ".local/share/trquant/reports/mainline/latest_composite_scores.json"
+            if cache_file.exists():
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                
+                scores = data.get("scores", [])
+                period = data.get("period", "")
+                timestamp = data.get("timestamp", "")
+                
+                if scores:
+                    from markets.ashare.mainline.five_dimension_engine import FiveDimensionResult, DimensionScore
+                    
+                    self.results = []
+                    for s in scores[:50]:  # 限制数量
+                        result = FiveDimensionResult(
+                            name=s.get("name", ""),
+                            type=s.get("mainline_type", "concept"),
+                            total_score=s.get("total_score", 0),
+                            funds_score=DimensionScore(score=s.get("funds_score", 0), level="中"),
+                            heat_score=DimensionScore(score=s.get("heat_score", 0), level="中"),
+                            momentum_score=DimensionScore(score=s.get("momentum_score", 0), level="中"),
+                            policy_score=DimensionScore(score=s.get("policy_score", 0), level="中"),
+                            leader_score=DimensionScore(score=s.get("leader_score", 0), level="中"),
+                            leader_stock=s.get("leader_stock", ""),
+                            leader_change=s.get("leader_change", 0),
+                            signal=s.get("signal", "")
+                        )
+                        self.results.append(result)
+                    
+                    if self.results:
+                        self._update_table()
+                        self.status_label.setText(f"📂 已加载本地缓存 ({timestamp[:10]} {period})")
+                    
+                    logger.info(f"✅ 从本地文件加载缓存: {len(self.results)}个主线")
+                    
+        except Exception as e:
+            logger.debug(f"本地缓存加载失败: {e}")
+    
     def _on_error(self, error: str):
         self.calc_btn.setEnabled(True)
         self.progress_frame.setVisible(False)
@@ -1011,9 +1108,14 @@ class CompositeDimensionTab(QWidget):
         # 生成雷达图
         pixmap = self._generate_radar_chart()
         if pixmap:
-            # 缩放到适合的大小
+            # 自适应窗口大小
+            label_size = self.radar_label.size()
+            target_size = min(label_size.width(), label_size.height(), 800)
+            if target_size < 400:
+                target_size = 600  # 最小显示尺寸
+            
             scaled = pixmap.scaled(
-                440, 440,
+                target_size, target_size,
                 Qt.AspectRatioMode.KeepAspectRatio,
                 Qt.TransformationMode.SmoothTransformation
             )
@@ -1031,11 +1133,11 @@ class CompositeDimensionTab(QWidget):
         self._update_detail(selected_results)
     
     def _generate_radar_chart(self) -> QPixmap:
-        """使用plotly生成雷达图（支持中文）"""
+        """使用plotly生成雷达图（支持中文，放大2倍）"""
         try:
-            # 固定尺寸
-            chart_width = 450
-            chart_height = 450
+            # 放大尺寸（原来450x450，现在900x900）
+            chart_width = 900
+            chart_height = 900
             
             # 维度标签（中文）
             categories = ['资金', '热度', '动量', '政策', '龙头']

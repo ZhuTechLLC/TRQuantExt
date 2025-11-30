@@ -392,7 +392,7 @@ class FactorFilterTab(QWidget):
         layout.setSpacing(12)
         
         # 标题
-        title = QLabel("🔍 因子筛选工具")
+        title = QLabel("🤖 AI智能因子选择")
         title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {Colors.PRIMARY};")
         layout.addWidget(title)
         
@@ -400,19 +400,19 @@ class FactorFilterTab(QWidget):
         intro_text = """
 <p style="color: #a0a0a0; line-height: 1.6;">
 <b style="color: #4fc3f7;">📌 工作原理：</b><br>
-本工具基于"主线选股 + 因子筛选"的双重过滤策略，实现从宏观到微观的选股逻辑：
+本工具基于AI智能分析，根据投资主线和候选池股票特征，<b style="color: #ffa726;">自动选择和构建最优因子组合</b>：
 </p>
 
 <ol style="color: #a0a0a0; line-height: 1.8;">
-<li><b style="color: #66bb6a;">读取候选池</b> - 从MongoDB读取已识别的投资主线（五维综合评分结果）</li>
-<li><b style="color: #66bb6a;">获取成分股</b> - 通过JQData获取各主线对应的概念/行业成分股</li>
-<li><b style="color: #66bb6a;">因子计算</b> - 计算价值、成长、质量、动量等多因子评分</li>
-<li><b style="color: #66bb6a;">综合评分</b> - 融合主线评分（40%）+ 因子评分（60%）</li>
-<li><b style="color: #66bb6a;">输出信号</b> - 按综合得分排序，输出选股信号</li>
+<li><b style="color: #66bb6a;">读取数据</b> - 从MongoDB读取投资主线+候选池股票</li>
+<li><b style="color: #66bb6a;">AI分析</b> - 大模型分析当前市场环境，推荐最适合的因子组合</li>
+<li><b style="color: #66bb6a;">因子选择</b> - 根据投资周期（短/中/长）动态调整因子权重</li>
+<li><b style="color: #66bb6a;">可视化</b> - 展示因子分布、相关性、有效性分析</li>
+<li><b style="color: #66bb6a;">输出Top50</b> - 输出综合得分前50的候选列表，供策略开发使用</li>
 </ol>
 
 <p style="color: #888; font-size: 12px; margin-top: 10px;">
-<b>💡 使用提示：</b> 如果候选池数据为空，请先到"投资主线 → 综合评分"计算并保存主线评分。
+<b>💡 工作流程：</b> 投资主线识别 → 候选池构建 → <b>因子选择(当前)</b> → 因子计算 → 策略开发
 </p>
 """
         intro_label = QLabel(intro_text)
