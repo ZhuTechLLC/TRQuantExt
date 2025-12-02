@@ -3,289 +3,330 @@
 ## 目录
 
 1. [系统要求](#系统要求)
-2. [Linux安装](#linux安装)
-3. [Windows安装](#windows安装)
-4. [验证安装](#验证安装)
-5. [常见问题](#常见问题)
+2. [Linux 安装](#linux-安装)
+3. [Windows 安装](#windows-安装)
+4. [macOS 安装](#macos-安装)
+5. [开发者模式](#开发者模式)
+6. [配置说明](#配置说明)
+7. [MCP 设置](#mcp-设置)
+8. [常见问题](#常见问题)
 
 ---
 
 ## 系统要求
 
-### 软件依赖
+### 必需组件
 
-| 软件 | 版本要求 | 说明 |
-|------|----------|------|
-| Cursor IDE | >= 0.40 | 或 VS Code >= 1.85 |
-| Node.js | >= 18.x | 用于构建Extension |
-| Python | >= 3.9 | 推荐3.10+ |
-| npm | >= 9.x | Node包管理器 |
+| 组件 | 版本要求 |
+|------|----------|
+| Cursor IDE | 最新版本 |
+| Node.js | >= 18.0.0 |
+| Python | >= 3.10 |
+| npm / yarn | 最新版本 |
 
-### Python包依赖
+### Python 依赖
 
 ```
-jqdatasdk>=1.8.0    # JQData数据源
-akshare>=1.10.0     # AKShare数据源
-pandas>=2.0.0       # 数据处理
-numpy>=1.24.0       # 数值计算
-pymongo>=4.0.0      # MongoDB连接
+jqdatasdk>=1.8.0
+pandas>=1.5.0
+numpy>=1.24.0
+pymongo>=4.0.0
+akshare>=1.10.0
 ```
 
 ---
 
-## Linux安装
+## Linux 安装
 
-### 1. 安装系统依赖
+### 自动安装（推荐）
 
 ```bash
-# Ubuntu/Debian
-sudo apt update
-sudo apt install -y nodejs npm python3 python3-pip python3-venv
+# 进入项目目录
+cd /path/to/TRQuant/extension
 
-# CentOS/RHEL
-sudo yum install -y nodejs npm python3 python3-pip
-
-# Arch Linux
-sudo pacman -S nodejs npm python python-pip
+# 运行安装脚本
+chmod +x scripts/setup.sh
+./scripts/setup.sh
 ```
 
-### 2. 克隆项目
+### 手动安装
+
+#### 1. 安装 Node.js 依赖
 
 ```bash
-cd /home/$(whoami)/dev
-git clone <repo-url> TRQuant
-cd TRQuant
-```
-
-### 3. 安装Extension依赖
-
-```bash
-cd extension
+cd /path/to/TRQuant/extension
 npm install
 ```
 
-### 4. 配置Python环境
+#### 2. 创建 Python 虚拟环境
 
 ```bash
-# 创建虚拟环境（推荐）
-cd ..
+# 在 TRQuant 根目录
+cd /path/to/TRQuant
 python3 -m venv venv
 source venv/bin/activate
-
-# 安装Python依赖
 pip install -r requirements.txt
 ```
 
-### 5. 构建Extension
+#### 3. 编译 TypeScript
 
 ```bash
 cd extension
 npm run compile
 ```
 
-### 6. 安装到Cursor
+#### 4. 安装扩展
 
-**方法A：开发模式**
-1. 打开Cursor
-2. 按 `F5` 启动调试（会打开新窗口）
-3. 在新窗口中使用Extension
-
-**方法B：打包安装**
+方法A - 开发者模式：
 ```bash
-# 安装打包工具
+# 在 Cursor 中按 F5 启动调试
+```
+
+方法B - 打包安装：
+```bash
+# 安装 vsce
 npm install -g @vscode/vsce
 
 # 打包
 vsce package
 
-# 在Cursor中安装
-# Extensions → ⋯ → Install from VSIX
-```
-
-### 7. 配置Extension
-
-在Cursor设置中添加：
-
-```json
-{
-  "trquant.pythonPath": "/home/$(whoami)/dev/TRQuant/venv/bin/python",
-  "trquant.serverHost": "127.0.0.1",
-  "trquant.serverPort": 5000,
-  "trquant.mcpEnabled": true
-}
+# 安装生成的 .vsix 文件
+cursor --install-extension trquant-*.vsix
 ```
 
 ---
 
-## Windows安装
+## Windows 安装
 
-### 1. 安装系统依赖
+### 自动安装（推荐）
 
-**Node.js**
-1. 下载：https://nodejs.org/
-2. 运行安装程序
-3. 验证：`node --version`
-
-**Python**
-1. 下载：https://www.python.org/downloads/
-2. 安装时勾选 "Add Python to PATH"
-3. 验证：`python --version`
-
-### 2. 克隆项目
+以管理员身份运行 PowerShell：
 
 ```powershell
-cd C:\Users\%USERNAME%\dev
-git clone <repo-url> TRQuant
-cd TRQuant
+# 进入项目目录
+cd C:\path\to\TRQuant\extension
+
+# 运行安装脚本
+.\scripts\setup.bat
 ```
 
-### 3. 安装Extension依赖
+### 手动安装
+
+#### 1. 安装 Node.js 依赖
 
 ```powershell
-cd extension
+cd C:\path\to\TRQuant\extension
 npm install
 ```
 
-### 4. 配置Python环境
+#### 2. 创建 Python 虚拟环境
 
 ```powershell
-# 创建虚拟环境
-cd ..
+# 在 TRQuant 根目录
+cd C:\path\to\TRQuant
 python -m venv venv
-.\venv\Scripts\activate
-
-# 安装依赖
+.\venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
 
-### 5. 构建Extension
+#### 3. 编译 TypeScript
 
 ```powershell
 cd extension
 npm run compile
 ```
 
-### 6. 安装到Cursor
+#### 4. 配置 Python 路径
 
-**方法A：开发模式**
-1. 打开Cursor
-2. 按 `F5` 启动调试
-3. 在新窗口中测试
-
-**方法B：打包安装**
-```powershell
-npm install -g @vscode/vsce
-vsce package
-# 在Cursor中：Extensions → ⋯ → Install from VSIX
-```
-
-### 7. 配置Extension
+编辑 Cursor 设置 (`settings.json`)：
 
 ```json
 {
-  "trquant.pythonPath": "C:\\Users\\%USERNAME%\\dev\\TRQuant\\venv\\Scripts\\python.exe",
-  "trquant.serverHost": "127.0.0.1",
-  "trquant.serverPort": 5000,
-  "trquant.mcpEnabled": true
+    "trquant.pythonPath": "C:\\path\\to\\TRQuant\\venv\\Scripts\\python.exe"
 }
 ```
 
 ---
 
-## 验证安装
+## macOS 安装
 
-### 1. 验证Extension加载
-
-1. 打开Cursor
-2. 按 `Ctrl+Shift+P` (Windows) 或 `Cmd+Shift+P` (Mac/Linux)
-3. 输入 "TRQuant"
-4. 应该看到以下命令：
-   - TRQuant: 获取市场状态
-   - TRQuant: 获取投资主线
-   - TRQuant: 推荐因子
-   - TRQuant: 生成策略代码
-   - ...
-
-### 2. 验证Python后端
+### 自动安装（推荐）
 
 ```bash
-# Linux
-cd /home/$(whoami)/dev/TRQuant
-source venv/bin/activate
-echo '{"action": "get_market_status", "params": {}}' | python extension/python/bridge.py
+# 进入项目目录
+cd /path/to/TRQuant/extension
 
-# Windows
-cd C:\Users\%USERNAME%\dev\TRQuant
-.\venv\Scripts\activate
-echo {"action": "get_market_status", "params": {}} | python extension\python\bridge.py
+# 运行安装脚本
+chmod +x scripts/setup.sh
+./scripts/setup.sh
 ```
 
-应该返回类似：
+### 手动安装
+
+与 Linux 步骤相同。
+
+---
+
+## 开发者模式
+
+### 调试扩展
+
+1. 在 Cursor 中打开 `extension` 目录
+2. 按 `F5` 启动调试
+3. 新窗口中测试扩展功能
+
+### 实时编译
+
+```bash
+npm run watch
+```
+
+### 运行测试
+
+```bash
+# Python 测试
+cd extension/python
+python test_bridge.py
+python test_mcp.py
+```
+
+---
+
+## 配置说明
+
+### 扩展配置项
+
+在 Cursor 设置中配置（JSON）：
+
 ```json
 {
-  "ok": true,
-  "data": {
-    "regime": "risk_on",
-    "summary": "..."
-  }
+    // Python 解释器路径
+    "trquant.pythonPath": "python3",
+    
+    // 服务器配置
+    "trquant.serverHost": "127.0.0.1",
+    "trquant.serverPort": 5000,
+    "trquant.timeout": 60000,
+    
+    // MCP 配置
+    "trquant.mcpEnabled": true,
+    "trquant.mcpPort": 5001,
+    
+    // 策略默认配置
+    "trquant.defaultPlatform": "ptrade",
+    "trquant.defaultStyle": "multi_factor",
+    
+    // 风控默认参数
+    "trquant.defaultMaxPosition": 0.1,
+    "trquant.defaultStopLoss": 0.08,
+    "trquant.defaultTakeProfit": 0.2
 }
 ```
 
-### 3. 验证MCP Server
+### JQData 配置
 
-```bash
-# 启动MCP Server
-python extension/python/mcp_server.py
+确保 TRQuant 根目录有 `jqdata_config.json`：
 
-# 另一个终端发送测试请求
-echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | nc localhost 5001
+```json
+{
+    "username": "your_username",
+    "password": "your_password"
+}
 ```
+
+---
+
+## MCP 设置
+
+### 自动注册
+
+1. 在 Cursor 中执行命令 `TRQuant: 启用 MCP Server`
+2. 重启 Cursor
+
+### 手动注册
+
+编辑 MCP 配置文件：
+
+**Linux**: `~/.cursor/mcp.json`
+**macOS**: `~/Library/Application Support/Cursor/mcp.json`
+**Windows**: `%APPDATA%\Cursor\mcp.json`
+
+添加以下内容：
+
+```json
+{
+    "mcpServers": {
+        "trquant": {
+            "command": "/path/to/TRQuant/venv/bin/python",
+            "args": ["/path/to/TRQuant/extension/python/mcp_server.py"],
+            "env": {
+                "PYTHONIOENCODING": "utf-8",
+                "TRQUANT_ROOT": "/path/to/TRQuant"
+            }
+        }
+    }
+}
+```
+
+### 验证 MCP
+
+重启 Cursor 后，在 AI 对话中输入：
+
+```
+请调用 trquant_market_status 工具获取市场状态
+```
+
+如果配置正确，AI 将返回市场状态信息。
 
 ---
 
 ## 常见问题
 
-### Q1: "Python not found" 错误
+### Q: 命令执行超时
 
-**解决方案：**
-1. 检查Python是否安装：`python --version`
-2. 检查配置的Python路径是否正确
-3. Windows用户确认Python已添加到PATH
+**A**: 增加超时时间：
+```json
+{
+    "trquant.timeout": 120000
+}
+```
 
-### Q2: Extension无法加载
+### Q: Python 找不到
 
-**解决方案：**
-1. 检查Node.js版本：`node --version`（需要>=18）
-2. 重新安装依赖：`npm install`
-3. 重新构建：`npm run compile`
-4. 查看Cursor输出面板中的错误日志
+**A**: 配置完整路径：
+```json
+{
+    "trquant.pythonPath": "/usr/bin/python3"
+}
+```
 
-### Q3: bridge.py 执行超时
+### Q: JQData 认证失败
 
-**解决方案：**
-1. 检查TRQuant Core是否正确安装
-2. 检查MongoDB是否运行
-3. 增加超时时间设置
+**A**: 检查 `jqdata_config.json` 配置是否正确，账号是否有效。
 
-### Q4: MCP Server无法连接
+### Q: MCP 工具不可用
 
-**解决方案：**
-1. 检查`.cursor/mcp.json`配置是否正确
-2. 重启Cursor
-3. 检查端口是否被占用
+**A**: 
+1. 确认 `mcp.json` 配置正确
+2. 重启 Cursor
+3. 检查 Python 路径和依赖
 
-### Q5: Windows路径问题
+### Q: WebView 显示空白
 
-**解决方案：**
-- 使用正斜杠：`C:/Users/...` 或
-- 双反斜杠：`C:\\Users\\...`
-- 避免路径中有空格
+**A**: 
+1. 检查开发者工具 (Ctrl+Shift+I) 的控制台错误
+2. 确保 WebView 允许脚本执行
+
+### Q: 策略代码生成失败
+
+**A**: 
+1. 检查因子是否有效
+2. 查看 TRQuant Output 通道的日志
 
 ---
 
 ## 获取帮助
 
-- GitHub Issues: <repo-url>/issues
-- 文档: extension/docs/
-- 日志: Cursor → Output → TRQuant
-
+- 查看日志：`TRQuant: 查看日志`
+- 项目文档：`/docs` 目录
+- 提交问题：GitHub Issues

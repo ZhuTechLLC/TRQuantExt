@@ -2,145 +2,197 @@
 
 <div align="center">
 
-![TRQuant Logo](resources/icon.svg)
+**韬睿量化 - A股量化投资 Cursor 助手**
 
-**A股量化投资助手 - Cursor IDE 插件**
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/trquant)
+[![Platform](https://img.shields.io/badge/platform-PTrade%20%7C%20QMT-green.svg)](https://github.com/trquant)
+[![License](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](CHANGELOG.md)
-[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey.svg)](docs/INSTALLATION.md)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[功能特点](#功能特点) • [快速开始](#快速开始) • [使用教程](#使用教程) • [MCP集成](#mcp集成) • [开发文档](#开发文档)
 
 </div>
 
 ---
 
-## ✨ 功能特性
+## 功能特点
 
-- 📊 **市场状态分析** - 实时获取A股市场Regime、指数趋势、风格轮动
-- 🎯 **投资主线识别** - TOP20热门主线、行业轮动、投资逻辑
-- 📈 **因子推荐** - 基于市场状态智能推荐量化因子
-- 🚀 **策略生成** - 一键生成PTrade/QMT策略代码
-- 🤖 **AI深度集成** - 通过MCP协议让Cursor AI调用量化工具
-- 🖥️ **跨平台支持** - Linux和Windows双平台
+### 🎯 市场分析
+
+- **市场状态检测**: 自动识别 Risk On/Off/Neutral
+- **投资主线识别**: TOP 20 热门投资主线
+- **风格轮动分析**: 成长/价值/动量风格切换
+
+### 📊 智能选股
+
+- **因子推荐**: 基于市场状态推荐量化因子
+- **多因子组合**: 自由选择因子组合
+- **权重可视化**: 直观展示因子权重
+
+### 🚀 策略生成
+
+- **双平台支持**: PTrade (恒生) / QMT (迅投)
+- **四种策略风格**: 多因子、动量成长、价值、市场中性
+- **完整风控框架**: 止损止盈、仓位控制
+
+### 📈 回测分析
+
+- **多数据源**: 文件导入、手动输入、剪贴板
+- **智能诊断**: 自动分析回测问题
+- **优化建议**: 提供策略改进方向
+
+### 🤖 AI 增强
+
+- **MCP 集成**: Cursor AI 直接调用量化工具
+- **Prompt 生成**: 一键生成 AI 对话 Prompt
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
 ### 安装
 
-**Linux/macOS:**
 ```bash
-cd extension
-./scripts/setup.sh
+# 克隆项目
+git clone https://github.com/trquant/TRQuant.git
+
+# 进入扩展目录
+cd TRQuant/extension
+
+# 安装依赖
+npm install
+
+# 编译
+npm run compile
 ```
 
-**Windows:**
-```powershell
-cd extension
-.\scripts\setup.bat
+### 配置
+
+1. 在 Cursor 设置中配置 Python 路径：
+
+```json
+{
+    "trquant.pythonPath": "/path/to/python"
+}
 ```
 
-### 使用
+2. 配置 JQData 认证（`TRQuant/jqdata_config.json`）：
 
-1. 按 `Ctrl+Shift+P` (Windows) 或 `Cmd+Shift+P` (Mac)
-2. 输入 "TRQuant" 查看可用命令
-3. 选择所需功能
+```json
+{
+    "username": "your_username",
+    "password": "your_password"
+}
+```
+
+### 运行
+
+按 `F5` 在调试模式下运行扩展。
 
 ---
 
-## 📋 命令列表
+## 使用教程
+
+### 命令列表
 
 | 命令 | 功能 |
 |------|------|
-| `TRQuant: 获取市场状态` | 分析当前市场Regime |
-| `TRQuant: 获取投资主线` | 返回TOP20投资主线 |
-| `TRQuant: 推荐因子` | 智能推荐量化因子 |
-| `TRQuant: 生成策略代码` | 生成PTrade/QMT策略 |
-| `TRQuant: 分析回测结果` | 分析回测结果 |
-| `TRQuant: 打开控制面板` | 显示综合控制台 |
+| `TRQuant: 获取市场状态` | 分析当前市场 Regime |
+| `TRQuant: 获取投资主线` | 查看热门投资主线 |
+| `TRQuant: 推荐因子` | 获取因子推荐 |
+| `TRQuant: 生成策略代码` | 生成 PTrade/QMT 代码 |
+| `TRQuant: 分析回测结果` | 分析回测指标 |
+| `TRQuant: 启用 MCP Server` | 注册 MCP 工具 |
+
+### 典型工作流
+
+```
+1. 获取市场状态 → 了解当前市场环境
+2. 查看投资主线 → 确定投资方向
+3. 推荐因子 → 选择量化因子
+4. 生成策略 → 获取可执行代码
+5. 回测分析 → 评估策略表现
+```
+
+详细教程请查看 [使用教程](docs/USAGE.md)。
 
 ---
 
-## 🔧 策略平台支持
+## MCP 集成
 
-### PTrade (恒生)
+### 启用 MCP
 
-```python
-def initialize(context):
-    context.max_position = 0.1
-    run_daily(rebalance, time='9:35')
+执行命令 `TRQuant: 启用 MCP Server`，重启 Cursor 后生效。
 
-def handle_data(context, data):
-    pass
-```
+### MCP 工具
 
-### QMT (迅投)
+| 工具 | 描述 |
+|------|------|
+| `trquant_market_status` | 获取市场状态 |
+| `trquant_mainlines` | 获取投资主线 |
+| `trquant_recommend_factors` | 推荐因子 |
+| `trquant_generate_strategy` | 生成策略 |
+| `trquant_analyze_backtest` | 回测分析 |
 
-```python
-def init(ContextInfo):
-    ContextInfo.max_position = 0.1
-
-def handlebar(ContextInfo):
-    pass
-```
-
----
-
-## 🤖 AI集成
-
-通过MCP协议，Cursor AI可以直接调用TRQuant工具：
+### 示例对话
 
 ```
-用户: 帮我生成一个适合当前市场的多因子策略
+用户: 帮我生成一个适合当前市场的PTrade多因子策略
 
-AI: 让我先调用TRQuant工具获取市场信息...
-    [调用 trquant_get_market_status]
-    [调用 trquant_get_mainlines]
-    [调用 trquant_recommend_factors]
-    [调用 trquant_generate_strategy]
-    
-    根据当前市场状态，我为您生成了以下策略...
+AI: [调用 trquant_market_status]
+[调用 trquant_recommend_factors]
+[调用 trquant_generate_strategy]
+
+已生成策略代码...
 ```
 
 ---
 
-## 📁 项目结构
+## 开发文档
+
+- [系统设计](docs/DESIGN.md) - 架构和模块设计
+- [安装指南](docs/INSTALLATION.md) - 跨平台安装说明
+- [使用教程](docs/USAGE.md) - 详细功能介绍
+
+---
+
+## 项目结构
 
 ```
 extension/
-├── src/
-│   ├── extension.ts       # 入口
-│   ├── commands/          # 命令实现
-│   ├── services/          # 后端通信
-│   └── views/             # WebView面板
-├── python/
-│   ├── bridge.py          # Python桥接
-│   └── mcp_server.py      # MCP Server
-├── rules/                 # Cursor规则文件
-├── docs/                  # 文档
-└── scripts/               # 安装脚本
+├── src/                 # TypeScript 源码
+│   ├── commands/        # 命令实现
+│   ├── services/        # 服务层
+│   ├── views/           # WebView
+│   ├── types/           # 类型定义
+│   └── utils/           # 工具模块
+├── python/              # Python 后端
+│   ├── bridge.py        # TypeScript-Python 桥接
+│   ├── mcp_server.py    # MCP Server
+│   └── tools/           # 策略生成器
+├── docs/                # 文档
+└── scripts/             # 安装脚本
 ```
 
 ---
 
-## 📖 文档
+## 软件工程原则
 
-- [安装指南](docs/INSTALLATION.md)
-- [设计文档](docs/DESIGN.md)
-- [使用教程](docs/TUTORIAL.md)
-- [API参考](docs/API.md)
-
----
-
-## 🔗 相关项目
-
-- [TRQuant Core](../) - 量化投资核心库
-- [QuantConnect MCP](https://github.com/quantconnect/mcp-server) - 参考实现
+- ✅ **模块化设计**: 单一职责，高内聚低耦合
+- ✅ **类型安全**: TypeScript 严格类型检查
+- ✅ **错误处理**: 统一的错误处理框架
+- ✅ **日志记录**: 多级别日志系统
+- ✅ **测试覆盖**: Bridge 和 MCP 测试
 
 ---
 
-## 📄 许可证
+## 许可证
 
-MIT License - 详见 [LICENSE](LICENSE)
+MIT License
 
+---
+
+<div align="center">
+
+**Made with ❤️ for Quantitative Trading**
+
+</div>
