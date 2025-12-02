@@ -107,6 +107,23 @@ class DataManagerPanel(QWidget):
         open_dashboard_btn.clicked.connect(self._open_dashboard)
         btn_layout.addWidget(open_dashboard_btn)
         
+        # 旧版文件管理系统（端口5001）
+        legacy_btn = QPushButton("📊 文件管理系统(旧版:5001)")
+        legacy_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {Colors.SUCCESS};
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 14px 24px;
+                font-size: 14px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background: #34d399; }}
+        """)
+        legacy_btn.clicked.connect(self._open_legacy_dashboard)
+        btn_layout.addWidget(legacy_btn)
+        
         refresh_btn = QPushButton("🔄 刷新数据")
         refresh_btn.setStyleSheet(ButtonStyles.SECONDARY)
         refresh_btn.clicked.connect(self._load_all_data)
@@ -586,6 +603,27 @@ class DataManagerPanel(QWidget):
             
         except Exception as e:
             QMessageBox.warning(self, "启动失败", f"无法启动文件管理系统: {e}")
+    
+    def _open_legacy_dashboard(self):
+        """打开旧版文件管理系统（端口5001）"""
+        try:
+            project_root = Path(__file__).parent.parent.parent
+            
+            # 启动旧版Dashboard服务（端口5001）
+            subprocess.Popen(
+                [sys.executable, 'start_dashboard_legacy.py'],
+                cwd=str(project_root),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            
+            # 等待服务启动后打开浏览器
+            import time
+            time.sleep(2)
+            webbrowser.open("http://127.0.0.1:5001")
+            
+        except Exception as e:
+            QMessageBox.warning(self, "启动失败", f"无法启动旧版文件管理系统: {e}")
     
     def _open_file_or_folder(self, item, col):
         """打开文件或文件夹"""
