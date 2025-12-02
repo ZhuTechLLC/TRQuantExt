@@ -3,26 +3,29 @@
 数据管理面板
 ============
 
-管理系统生成的所有数据：
-- 报告文件（HTML）
-- 策略文件（Python）
-- 数据库数据（MongoDB）
-- 缓存数据
+整合现有的文件管理系统（Web仪表盘），并提供：
+- 快速入口：打开Web文件管理系统
+- 系统文件概览：智能分类显示所有数据
+- A股策略管理：策略库、回测历史、绩效跟踪
 """
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QTabWidget, QTreeWidget, QTreeWidgetItem,
     QTextBrowser, QSplitter, QMessageBox, QFileDialog,
-    QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar
+    QTableWidget, QTableWidgetItem, QHeaderView, QProgressBar,
+    QScrollArea, QGridLayout
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl, QTimer, QProcess
+from PyQt6.QtGui import QDesktopServices, QFont, QColor
 from pathlib import Path
 from datetime import datetime
 import json
 import shutil
 import logging
+import subprocess
+import sys
+import webbrowser
 
 from gui.styles.theme import Colors, ButtonStyles
 from gui.widgets.module_banner import ModuleBanner
@@ -31,12 +34,14 @@ logger = logging.getLogger(__name__)
 
 
 class DataManagerPanel(QWidget):
-    """数据管理面板"""
+    """数据管理面板 - 整合现有文件管理系统"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._dashboard_process = None
         self._init_ui()
-        self._load_data()
+        # 延迟加载数据
+        QTimer.singleShot(200, self._load_all_data)
     
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -46,32 +51,85 @@ class DataManagerPanel(QWidget):
         # Banner
         banner = ModuleBanner(
             title="📁 数据管理中心",
-            subtitle="统一管理报告、策略、数据库和缓存",
+            subtitle="策略代码、回测报告、研究文档统一管理",
             gradient_colors=(Colors.INFO, Colors.PRIMARY)
         )
         layout.addWidget(banner)
         
-        # 内容区域
+        # 可滚动内容区域
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet(f"QScrollArea {{ border: none; background: {Colors.BG_PRIMARY}; }}")
+        
         content = QWidget()
         content.setStyleSheet(f"background: {Colors.BG_PRIMARY};")
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(24, 20, 24, 20)
-        content_layout.setSpacing(16)
+        content_layout.setSpacing(20)
         
-        # 统计卡片
+        # ==================== 快速入口 ====================
+        entry_frame = QFrame()
+        entry_frame.setStyleSheet(f"""
+            QFrame {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                    stop:0 {Colors.PRIMARY}22, stop:1 {Colors.ACCENT}22);
+                border: 1px solid {Colors.PRIMARY}44;
+                border-radius: 16px;
+                padding: 20px;
+            }}
+        """)
+        entry_layout = QVBoxLayout(entry_frame)
+        
+        entry_title = QLabel("🚀 快速入口 - 文件管理系统")
+        entry_title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {Colors.TEXT_PRIMARY};")
+        entry_layout.addWidget(entry_title)
+        
+        entry_desc = QLabel("打开Web仪表盘，全面管理策略代码、回测报告、研究文档、因子研究、交易日志等")
+        entry_desc.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: 13px; margin-bottom: 12px;")
+        entry_layout.addWidget(entry_desc)
+        
+        btn_layout = QHBoxLayout()
+        
+        open_dashboard_btn = QPushButton("📂 打开文件管理系统")
+        open_dashboard_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {Colors.PRIMARY};
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 14px 28px;
+                font-size: 15px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background: {Colors.PRIMARY_HOVER}; }}
+        """)
+        open_dashboard_btn.clicked.connect(self._open_dashboard)
+        btn_layout.addWidget(open_dashboard_btn)
+        
+        refresh_btn = QPushButton("🔄 刷新数据")
+        refresh_btn.setStyleSheet(ButtonStyles.SECONDARY)
+        refresh_btn.clicked.connect(self._load_all_data)
+        btn_layout.addWidget(refresh_btn)
+        
+        btn_layout.addStretch()
+        entry_layout.addLayout(btn_layout)
+        
+        content_layout.addWidget(entry_frame)
+        
+        # ==================== 统计卡片 ====================
         stats_layout = QHBoxLayout()
-        self.report_count = self._create_stat_card("📄", "报告文件", "0")
-        self.strategy_count = self._create_stat_card("🐍", "策略文件", "0")
-        self.db_count = self._create_stat_card("🗄️", "数据集合", "0")
-        self.cache_size = self._create_stat_card("💾", "缓存大小", "0 MB")
+        self.strategy_card = self._create_stat_card("🐍", "策略文件", "0", Colors.PRIMARY)
+        self.report_card = self._create_stat_card("📊", "回测报告", "0", Colors.SUCCESS)
+        self.doc_card = self._create_stat_card("📄", "研究文档", "0", Colors.INFO)
+        self.data_card = self._create_stat_card("🗄️", "数据文件", "0", Colors.WARNING)
         
-        stats_layout.addWidget(self.report_count)
-        stats_layout.addWidget(self.strategy_count)
-        stats_layout.addWidget(self.db_count)
-        stats_layout.addWidget(self.cache_size)
+        stats_layout.addWidget(self.strategy_card)
+        stats_layout.addWidget(self.report_card)
+        stats_layout.addWidget(self.doc_card)
+        stats_layout.addWidget(self.data_card)
         content_layout.addLayout(stats_layout)
         
-        # Tab页
+        # ==================== Tab页 ====================
         tabs = QTabWidget()
         tabs.setStyleSheet(f"""
             QTabWidget::pane {{
@@ -82,7 +140,7 @@ class DataManagerPanel(QWidget):
             QTabBar::tab {{
                 background: {Colors.BG_TERTIARY};
                 color: {Colors.TEXT_SECONDARY};
-                padding: 12px 24px;
+                padding: 12px 20px;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
                 margin-right: 2px;
@@ -95,127 +153,90 @@ class DataManagerPanel(QWidget):
             }}
         """)
         
-        # A股策略管理Tab（核心）
-        tabs.addTab(self._create_strategy_manager_tab(), "📋 A股策略管理")
+        # 系统文件概览
+        tabs.addTab(self._create_files_overview_tab(), "📂 系统文件概览")
         
-        # 报告管理Tab
-        tabs.addTab(self._create_reports_tab(), "📄 报告文件")
+        # A股策略管理
+        tabs.addTab(self._create_strategy_tab(), "📋 A股策略管理")
         
-        # 策略代码Tab
-        tabs.addTab(self._create_strategies_tab(), "🐍 策略代码")
+        # 回测记录
+        tabs.addTab(self._create_backtest_tab(), "📊 回测记录")
         
-        # 数据库管理Tab
+        # 数据库
         tabs.addTab(self._create_database_tab(), "🗄️ 数据库")
         
-        # 缓存管理Tab
-        tabs.addTab(self._create_cache_tab(), "💾 缓存")
-        
         content_layout.addWidget(tabs, 1)
-        layout.addWidget(content, 1)
+        
+        scroll.setWidget(content)
+        layout.addWidget(scroll, 1)
     
-    def _create_stat_card(self, icon: str, label: str, value: str) -> QFrame:
+    def _create_stat_card(self, icon: str, label: str, value: str, color: str) -> QFrame:
         """创建统计卡片"""
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
                 background: {Colors.BG_SECONDARY};
                 border: 1px solid {Colors.BORDER_PRIMARY};
+                border-left: 4px solid {color};
                 border-radius: 12px;
                 padding: 16px;
             }}
         """)
         
         layout = QVBoxLayout(card)
-        layout.setSpacing(8)
+        layout.setSpacing(6)
         
-        # 图标和标签
         header = QHBoxLayout()
         icon_label = QLabel(icon)
-        icon_label.setStyleSheet("font-size: 24px;")
+        icon_label.setStyleSheet("font-size: 22px;")
         header.addWidget(icon_label)
         
         title = QLabel(label)
-        title.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: 13px;")
+        title.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: 12px;")
         header.addWidget(title)
         header.addStretch()
         layout.addLayout(header)
         
-        # 数值
         value_label = QLabel(value)
         value_label.setObjectName("value")
-        value_label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; font-size: 28px; font-weight: bold;")
+        value_label.setStyleSheet(f"color: {color}; font-size: 26px; font-weight: bold;")
         layout.addWidget(value_label)
         
         return card
     
-    def _create_strategy_manager_tab(self) -> QWidget:
-        """A股策略管理Tab - 嵌入完整的策略管理器"""
-        from gui.widgets.strategy_manager_panel import StrategyManagerPanel
-        
-        # 创建策略管理器（去掉Banner，直接显示内容）
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        # 策略管理器
-        self.strategy_manager = StrategyManagerPanel()
-        layout.addWidget(self.strategy_manager)
-        
-        return widget
-    
-    def _create_reports_tab(self) -> QWidget:
-        """报告管理Tab"""
+    def _create_files_overview_tab(self) -> QWidget:
+        """系统文件概览Tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(16, 16, 16, 16)
         
-        # 工具栏
-        toolbar = QHBoxLayout()
-        
-        refresh_btn = QPushButton("🔄 刷新")
-        refresh_btn.setStyleSheet(ButtonStyles.SECONDARY)
-        refresh_btn.clicked.connect(self._refresh_reports)
-        toolbar.addWidget(refresh_btn)
-        
-        open_folder_btn = QPushButton("📂 打开目录")
-        open_folder_btn.setStyleSheet(ButtonStyles.SECONDARY)
-        open_folder_btn.clicked.connect(self._open_reports_folder)
-        toolbar.addWidget(open_folder_btn)
-        
-        clean_btn = QPushButton("🗑️ 清理旧报告")
-        clean_btn.setStyleSheet(ButtonStyles.DANGER)
-        clean_btn.clicked.connect(self._clean_old_reports)
-        toolbar.addWidget(clean_btn)
-        
-        toolbar.addStretch()
-        layout.addLayout(toolbar)
-        
-        # 报告列表
-        self.reports_tree = QTreeWidget()
-        self.reports_tree.setHeaderLabels(["文件名", "类型", "大小", "修改时间"])
-        self.reports_tree.setStyleSheet(f"""
+        # 文件树
+        self.files_tree = QTreeWidget()
+        self.files_tree.setHeaderLabels(["名称", "类型", "数量/大小", "最后更新"])
+        self.files_tree.setStyleSheet(f"""
             QTreeWidget {{
                 background: {Colors.BG_TERTIARY};
                 border: 1px solid {Colors.BORDER_PRIMARY};
                 border-radius: 8px;
                 color: {Colors.TEXT_PRIMARY};
             }}
+            QTreeWidget::item {{ padding: 6px; }}
             QTreeWidget::item:hover {{ background: {Colors.BG_HOVER}; }}
             QTreeWidget::item:selected {{ background: {Colors.PRIMARY}; }}
             QHeaderView::section {{
                 background: {Colors.BG_SECONDARY};
                 color: {Colors.TEXT_SECONDARY};
-                padding: 8px;
+                padding: 10px;
                 border: none;
             }}
         """)
-        self.reports_tree.itemDoubleClicked.connect(self._open_report)
-        layout.addWidget(self.reports_tree, 1)
+        self.files_tree.itemDoubleClicked.connect(self._open_file_or_folder)
+        layout.addWidget(self.files_tree, 1)
         
         return widget
     
-    def _create_strategies_tab(self) -> QWidget:
-        """策略管理Tab"""
+    def _create_strategy_tab(self) -> QWidget:
+        """A股策略管理Tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -223,20 +244,15 @@ class DataManagerPanel(QWidget):
         # 工具栏
         toolbar = QHBoxLayout()
         
-        refresh_btn = QPushButton("🔄 刷新")
-        refresh_btn.setStyleSheet(ButtonStyles.SECONDARY)
-        refresh_btn.clicked.connect(self._refresh_strategies)
-        toolbar.addWidget(refresh_btn)
-        
-        open_folder_btn = QPushButton("📂 打开目录")
+        open_folder_btn = QPushButton("📂 打开策略目录")
         open_folder_btn.setStyleSheet(ButtonStyles.SECONDARY)
         open_folder_btn.clicked.connect(self._open_strategies_folder)
         toolbar.addWidget(open_folder_btn)
         
-        export_btn = QPushButton("📤 导出策略")
-        export_btn.setStyleSheet(ButtonStyles.PRIMARY)
-        export_btn.clicked.connect(self._export_strategy)
-        toolbar.addWidget(export_btn)
+        new_btn = QPushButton("➕ 生成新策略")
+        new_btn.setStyleSheet(ButtonStyles.PRIMARY)
+        new_btn.clicked.connect(self._generate_new_strategy)
+        toolbar.addWidget(new_btn)
         
         toolbar.addStretch()
         layout.addLayout(toolbar)
@@ -245,9 +261,9 @@ class DataManagerPanel(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # 策略列表
-        self.strategies_tree = QTreeWidget()
-        self.strategies_tree.setHeaderLabels(["文件名", "大小", "修改时间"])
-        self.strategies_tree.setStyleSheet(f"""
+        self.strategy_tree = QTreeWidget()
+        self.strategy_tree.setHeaderLabels(["策略名称", "类型", "更新时间"])
+        self.strategy_tree.setStyleSheet(f"""
             QTreeWidget {{
                 background: {Colors.BG_TERTIARY};
                 border: 1px solid {Colors.BORDER_PRIMARY};
@@ -255,30 +271,62 @@ class DataManagerPanel(QWidget):
                 color: {Colors.TEXT_PRIMARY};
             }}
         """)
-        self.strategies_tree.itemClicked.connect(self._preview_strategy)
-        splitter.addWidget(self.strategies_tree)
+        self.strategy_tree.itemClicked.connect(self._preview_strategy)
+        splitter.addWidget(self.strategy_tree)
         
-        # 预览区域
-        self.strategy_preview = QTextBrowser()
-        self.strategy_preview.setStyleSheet(f"""
+        # 代码预览
+        self.code_preview = QTextBrowser()
+        self.code_preview.setStyleSheet(f"""
             QTextBrowser {{
                 background: {Colors.BG_TERTIARY};
                 border: 1px solid {Colors.BORDER_PRIMARY};
                 border-radius: 8px;
                 color: {Colors.TEXT_PRIMARY};
                 font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 12px;
+                font-size: 11px;
+                padding: 10px;
             }}
         """)
-        splitter.addWidget(self.strategy_preview)
-        
+        splitter.addWidget(self.code_preview)
         splitter.setSizes([300, 500])
+        
         layout.addWidget(splitter, 1)
         
         return widget
     
+    def _create_backtest_tab(self) -> QWidget:
+        """回测记录Tab"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        
+        # 回测表格
+        self.backtest_table = QTableWidget()
+        self.backtest_table.setColumnCount(6)
+        self.backtest_table.setHorizontalHeaderLabels([
+            "策略名称", "回测时间", "收益率", "夏普比率", "最大回撤", "状态"
+        ])
+        self.backtest_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.backtest_table.setStyleSheet(f"""
+            QTableWidget {{
+                background: {Colors.BG_TERTIARY};
+                border: 1px solid {Colors.BORDER_PRIMARY};
+                border-radius: 8px;
+                color: {Colors.TEXT_PRIMARY};
+            }}
+            QHeaderView::section {{
+                background: {Colors.BG_SECONDARY};
+                color: {Colors.TEXT_SECONDARY};
+                padding: 10px;
+                border: none;
+            }}
+        """)
+        layout.addWidget(self.backtest_table, 1)
+        
+        return widget
+    
     def _create_database_tab(self) -> QWidget:
-        """数据库管理Tab"""
+        """数据库Tab"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(16, 16, 16, 16)
@@ -286,25 +334,15 @@ class DataManagerPanel(QWidget):
         # 工具栏
         toolbar = QHBoxLayout()
         
-        refresh_btn = QPushButton("🔄 刷新")
-        refresh_btn.setStyleSheet(ButtonStyles.SECONDARY)
-        refresh_btn.clicked.connect(self._refresh_database)
-        toolbar.addWidget(refresh_btn)
-        
         export_btn = QPushButton("📤 导出数据")
         export_btn.setStyleSheet(ButtonStyles.PRIMARY)
         export_btn.clicked.connect(self._export_database)
         toolbar.addWidget(export_btn)
         
-        clean_btn = QPushButton("🗑️ 清理数据")
-        clean_btn.setStyleSheet(ButtonStyles.DANGER)
-        clean_btn.clicked.connect(self._clean_database)
-        toolbar.addWidget(clean_btn)
-        
         toolbar.addStretch()
         layout.addLayout(toolbar)
         
-        # 数据库集合表格
+        # 数据库表格
         self.db_table = QTableWidget()
         self.db_table.setColumnCount(4)
         self.db_table.setHorizontalHeaderLabels(["集合名称", "文档数", "大小", "最后更新"])
@@ -315,7 +353,6 @@ class DataManagerPanel(QWidget):
                 border: 1px solid {Colors.BORDER_PRIMARY};
                 border-radius: 8px;
                 color: {Colors.TEXT_PRIMARY};
-                gridline-color: {Colors.BORDER_PRIMARY};
             }}
             QHeaderView::section {{
                 background: {Colors.BG_SECONDARY};
@@ -328,129 +365,169 @@ class DataManagerPanel(QWidget):
         
         return widget
     
-    def _create_cache_tab(self) -> QWidget:
-        """缓存管理Tab"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setContentsMargins(16, 16, 16, 16)
-        
-        # 缓存信息
-        info_frame = QFrame()
-        info_frame.setStyleSheet(f"""
-            QFrame {{
-                background: {Colors.BG_TERTIARY};
-                border: 1px solid {Colors.BORDER_PRIMARY};
-                border-radius: 12px;
-                padding: 20px;
-            }}
-        """)
-        info_layout = QVBoxLayout(info_frame)
-        
-        self.cache_info = QLabel("正在加载缓存信息...")
-        self.cache_info.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; font-size: 14px;")
-        self.cache_info.setWordWrap(True)
-        info_layout.addWidget(self.cache_info)
-        
-        layout.addWidget(info_frame)
-        
-        # 操作按钮
-        btn_layout = QHBoxLayout()
-        
-        clear_cache_btn = QPushButton("🗑️ 清除全部缓存")
-        clear_cache_btn.setStyleSheet(ButtonStyles.DANGER)
-        clear_cache_btn.setFixedHeight(44)
-        clear_cache_btn.clicked.connect(self._clear_cache)
-        btn_layout.addWidget(clear_cache_btn)
-        
-        clear_old_btn = QPushButton("🧹 清除7天前缓存")
-        clear_old_btn.setStyleSheet(ButtonStyles.WARNING)
-        clear_old_btn.setFixedHeight(44)
-        clear_old_btn.clicked.connect(self._clear_old_cache)
-        btn_layout.addWidget(clear_old_btn)
-        
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-        
-        layout.addStretch()
-        
-        return widget
+    def _load_all_data(self):
+        """加载所有数据"""
+        self._load_files_overview()
+        self._load_strategies()
+        self._load_backtests()
+        self._load_database()
     
-    def _load_data(self):
-        """加载数据"""
-        self._refresh_reports()
-        self._refresh_strategies()
-        self._refresh_database()
-        self._refresh_cache()
-    
-    def _refresh_reports(self):
-        """刷新报告列表"""
-        self.reports_tree.clear()
+    def _load_files_overview(self):
+        """加载文件概览"""
+        self.files_tree.clear()
         
         base_dir = Path(__file__).parent.parent.parent
-        reports_dir = base_dir / "reports"
         
-        if not reports_dir.exists():
-            return
+        # 定义目录分类
+        categories = [
+            ("🐍 策略代码", "strategies", [".py"], "strategy_count"),
+            ("📊 回测报告", "reports", [".html", ".json", ".pdf"], "report_count"),
+            ("📄 研究文档", "docs", [".md", ".pdf", ".html"], "doc_count"),
+            ("🗄️ 数据文件", "data", [".csv", ".json", ".pkl"], "data_count"),
+            ("⚙️ 配置文件", "config", [".json", ".yaml", ".ini"], None),
+            ("📁 缓存", ".cache", ["*"], None),
+        ]
         
-        count = 0
+        total_counts = {"strategy_count": 0, "report_count": 0, "doc_count": 0, "data_count": 0}
         
-        # 按日期分组
-        for item in sorted(reports_dir.iterdir(), reverse=True):
-            if item.is_dir():
-                # 日期文件夹
-                date_item = QTreeWidgetItem([item.name, "📁 文件夹", "", ""])
-                self.reports_tree.addTopLevelItem(date_item)
-                
-                for f in sorted(item.glob("*.html"), reverse=True):
-                    size = f"{f.stat().st_size / 1024:.1f} KB"
-                    mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime('%H:%M:%S')
-                    child = QTreeWidgetItem([f.name, "HTML", size, mtime])
-                    child.setData(0, Qt.ItemDataRole.UserRole, str(f))
-                    date_item.addChild(child)
-                    count += 1
-                
-                date_item.setExpanded(True)
+        for cat_name, dir_name, extensions, count_key in categories:
+            dir_path = base_dir / dir_name
+            if not dir_path.exists():
+                continue
             
-            elif item.suffix == ".html":
-                size = f"{item.stat().st_size / 1024:.1f} KB"
-                mtime = datetime.fromtimestamp(item.stat().st_mtime).strftime('%m-%d %H:%M')
+            # 统计文件
+            files = []
+            total_size = 0
+            latest_mtime = None
+            
+            for ext in extensions:
+                if ext == "*":
+                    for f in dir_path.rglob("*"):
+                        if f.is_file():
+                            files.append(f)
+                            total_size += f.stat().st_size
+                            mtime = f.stat().st_mtime
+                            if latest_mtime is None or mtime > latest_mtime:
+                                latest_mtime = mtime
+                else:
+                    for f in dir_path.rglob(f"*{ext}"):
+                        if f.is_file():
+                            files.append(f)
+                            total_size += f.stat().st_size
+                            mtime = f.stat().st_mtime
+                            if latest_mtime is None or mtime > latest_mtime:
+                                latest_mtime = mtime
+            
+            if count_key:
+                total_counts[count_key] = len(files)
+            
+            # 创建分类节点
+            size_str = f"{total_size / 1024 / 1024:.1f} MB" if total_size > 1024*1024 else f"{total_size / 1024:.1f} KB"
+            mtime_str = datetime.fromtimestamp(latest_mtime).strftime('%m-%d %H:%M') if latest_mtime else "-"
+            
+            cat_item = QTreeWidgetItem([cat_name, "文件夹", f"{len(files)} 文件", mtime_str])
+            cat_item.setData(0, Qt.ItemDataRole.UserRole, str(dir_path))
+            cat_item.setExpanded(True)
+            
+            # 添加子目录
+            subdirs = {}
+            for f in sorted(files, key=lambda x: x.stat().st_mtime, reverse=True)[:20]:
+                rel_path = f.relative_to(dir_path)
+                if len(rel_path.parts) > 1:
+                    subdir = rel_path.parts[0]
+                    if subdir not in subdirs:
+                        subdirs[subdir] = QTreeWidgetItem([f"📁 {subdir}", "子目录", "", ""])
+                        subdirs[subdir].setData(0, Qt.ItemDataRole.UserRole, str(dir_path / subdir))
+                        cat_item.addChild(subdirs[subdir])
+                    parent = subdirs[subdir]
+                else:
+                    parent = cat_item
                 
-                # 判断类型
-                report_type = "趋势报告" if "trend" in item.name else "主线报告" if "mainline" in item.name else "报告"
-                
-                file_item = QTreeWidgetItem([item.name, report_type, size, mtime])
-                file_item.setData(0, Qt.ItemDataRole.UserRole, str(item))
-                self.reports_tree.addTopLevelItem(file_item)
-                count += 1
+                fsize = f"{f.stat().st_size / 1024:.1f} KB"
+                fmtime = datetime.fromtimestamp(f.stat().st_mtime).strftime('%m-%d %H:%M')
+                file_item = QTreeWidgetItem([f.name, f.suffix.upper(), fsize, fmtime])
+                file_item.setData(0, Qt.ItemDataRole.UserRole, str(f))
+                parent.addChild(file_item)
+            
+            self.files_tree.addTopLevelItem(cat_item)
         
-        # 更新统计
-        self.report_count.findChild(QLabel, "value").setText(str(count))
+        # 更新统计卡片
+        self.strategy_card.findChild(QLabel, "value").setText(str(total_counts["strategy_count"]))
+        self.report_card.findChild(QLabel, "value").setText(str(total_counts["report_count"]))
+        self.doc_card.findChild(QLabel, "value").setText(str(total_counts["doc_count"]))
+        self.data_card.findChild(QLabel, "value").setText(str(total_counts["data_count"]))
     
-    def _refresh_strategies(self):
-        """刷新策略列表"""
-        self.strategies_tree.clear()
+    def _load_strategies(self):
+        """加载策略列表"""
+        self.strategy_tree.clear()
         
         base_dir = Path(__file__).parent.parent.parent
-        strategies_dir = base_dir / "strategies" / "ptrade"
+        strategies_dir = base_dir / "strategies"
         
         if not strategies_dir.exists():
             return
         
-        count = 0
-        for f in sorted(strategies_dir.glob("*.py"), reverse=True):
-            size = f"{f.stat().st_size / 1024:.1f} KB"
-            mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime('%m-%d %H:%M')
-            
-            item = QTreeWidgetItem([f.name, size, mtime])
-            item.setData(0, Qt.ItemDataRole.UserRole, str(f))
-            self.strategies_tree.addTopLevelItem(item)
-            count += 1
+        # 按平台分组
+        platforms = [
+            ("PTrade策略", "ptrade"),
+            ("QMT策略", "qmt"),
+            ("示例策略", "examples"),
+        ]
         
-        # 更新统计
-        self.strategy_count.findChild(QLabel, "value").setText(str(count))
+        for platform_name, subdir in platforms:
+            platform_dir = strategies_dir / subdir
+            if not platform_dir.exists():
+                continue
+            
+            platform_item = QTreeWidgetItem([f"📁 {platform_name}", "", ""])
+            platform_item.setExpanded(True)
+            
+            for f in sorted(platform_dir.glob("*.py"), reverse=True):
+                if f.name.startswith("__"):
+                    continue
+                
+                mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime('%m-%d %H:%M')
+                item = QTreeWidgetItem([f.stem, subdir, mtime])
+                item.setData(0, Qt.ItemDataRole.UserRole, str(f))
+                platform_item.addChild(item)
+            
+            if platform_item.childCount() > 0:
+                self.strategy_tree.addTopLevelItem(platform_item)
     
-    def _refresh_database(self):
-        """刷新数据库信息"""
+    def _load_backtests(self):
+        """加载回测记录"""
+        self.backtest_table.setRowCount(0)
+        
+        try:
+            from pymongo import MongoClient
+            client = MongoClient('localhost', 27017, serverSelectionTimeoutMS=3000)
+            db = client['trquant']
+            
+            backtests = list(db.backtest_results.find().sort("timestamp", -1).limit(30))
+            self.backtest_table.setRowCount(len(backtests))
+            
+            for i, bt in enumerate(backtests):
+                self.backtest_table.setItem(i, 0, QTableWidgetItem(bt.get("strategy_name", "-")))
+                
+                timestamp = bt.get("timestamp", "")
+                if hasattr(timestamp, 'strftime'):
+                    timestamp = timestamp.strftime('%Y-%m-%d %H:%M')
+                self.backtest_table.setItem(i, 1, QTableWidgetItem(str(timestamp)[:16]))
+                
+                returns = bt.get("total_return", 0)
+                item = QTableWidgetItem(f"{returns:.2f}%")
+                item.setForeground(QColor(Colors.SUCCESS if returns > 0 else Colors.DANGER))
+                self.backtest_table.setItem(i, 2, item)
+                
+                self.backtest_table.setItem(i, 3, QTableWidgetItem(f"{bt.get('sharpe_ratio', 0):.2f}"))
+                self.backtest_table.setItem(i, 4, QTableWidgetItem(f"{bt.get('max_drawdown', 0):.2f}%"))
+                self.backtest_table.setItem(i, 5, QTableWidgetItem(bt.get("status", "完成")))
+                
+        except Exception as e:
+            logger.warning(f"加载回测记录失败: {e}")
+    
+    def _load_database(self):
+        """加载数据库信息"""
         self.db_table.setRowCount(0)
         
         try:
@@ -465,66 +542,86 @@ class DataManagerPanel(QWidget):
                 coll = db[coll_name]
                 doc_count = coll.count_documents({})
                 
-                # 获取最后更新时间
-                last_doc = coll.find_one(sort=[("timestamp", -1)]) or coll.find_one(sort=[("_id", -1)])
-                if last_doc:
-                    if "timestamp" in last_doc:
-                        last_update = last_doc["timestamp"].strftime('%m-%d %H:%M') if hasattr(last_doc["timestamp"], 'strftime') else str(last_doc["timestamp"])[:16]
-                    else:
-                        last_update = "-"
+                # 获取大小
+                try:
+                    stats = db.command("collstats", coll_name)
+                    size = f"{stats.get('size', 0) / 1024:.1f} KB"
+                except:
+                    size = "-"
+                
+                # 获取最后更新
+                last_doc = coll.find_one(sort=[("timestamp", -1)])
+                if last_doc and "timestamp" in last_doc:
+                    ts = last_doc["timestamp"]
+                    last_update = ts.strftime('%m-%d %H:%M') if hasattr(ts, 'strftime') else str(ts)[:16]
                 else:
                     last_update = "-"
-                
-                # 估算大小
-                stats = db.command("collstats", coll_name)
-                size = f"{stats.get('size', 0) / 1024:.1f} KB"
                 
                 self.db_table.setItem(i, 0, QTableWidgetItem(coll_name))
                 self.db_table.setItem(i, 1, QTableWidgetItem(str(doc_count)))
                 self.db_table.setItem(i, 2, QTableWidgetItem(size))
                 self.db_table.setItem(i, 3, QTableWidgetItem(last_update))
+                
+        except Exception as e:
+            logger.warning(f"加载数据库信息失败: {e}")
+    
+    def _open_dashboard(self):
+        """打开Web文件管理系统"""
+        try:
+            project_root = Path(__file__).parent.parent.parent
             
-            # 更新统计
-            self.db_count.findChild(QLabel, "value").setText(str(len(collections)))
+            # 启动Dashboard服务
+            subprocess.Popen(
+                [sys.executable, 'start_dashboard.py'],
+                cwd=str(project_root),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            
+            # 等待服务启动后打开浏览器
+            import time
+            time.sleep(2)
+            webbrowser.open("http://localhost:8050")
             
         except Exception as e:
-            logger.warning(f"刷新数据库失败: {e}")
-            self.db_count.findChild(QLabel, "value").setText("N/A")
+            QMessageBox.warning(self, "启动失败", f"无法启动文件管理系统: {e}")
     
-    def _refresh_cache(self):
-        """刷新缓存信息"""
-        cache_dir = Path.home() / ".cache" / "trquant"
-        local_dir = Path.home() / ".local" / "share" / "trquant"
-        
-        total_size = 0
-        file_count = 0
-        
-        for d in [cache_dir, local_dir]:
-            if d.exists():
-                for f in d.rglob("*"):
-                    if f.is_file():
-                        total_size += f.stat().st_size
-                        file_count += 1
-        
-        size_mb = total_size / (1024 * 1024)
-        
-        self.cache_info.setText(f"""
-<b>缓存目录：</b><br/>
-• {cache_dir}<br/>
-• {local_dir}<br/><br/>
-<b>统计：</b><br/>
-• 文件数：{file_count} 个<br/>
-• 总大小：{size_mb:.2f} MB
-        """)
-        
-        # 更新统计
-        self.cache_size.findChild(QLabel, "value").setText(f"{size_mb:.1f} MB")
-    
-    def _open_report(self, item, col):
-        """打开报告文件"""
+    def _open_file_or_folder(self, item, col):
+        """打开文件或文件夹"""
         path = item.data(0, Qt.ItemDataRole.UserRole)
-        if path and Path(path).exists():
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        if path:
+            p = Path(path)
+            if p.exists():
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(p)))
+    
+    def _open_strategies_folder(self):
+        """打开策略目录"""
+        strategies_dir = Path(__file__).parent.parent.parent / "strategies" / "ptrade"
+        strategies_dir.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(strategies_dir)))
+    
+    def _generate_new_strategy(self):
+        """生成新策略"""
+        try:
+            from core.workflow_orchestrator import get_workflow_orchestrator
+            
+            reply = QMessageBox.question(
+                self, "生成策略",
+                "是否基于当前工作流结果生成新策略？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                orchestrator = get_workflow_orchestrator()
+                result = orchestrator.generate_strategy()
+                
+                if result.success:
+                    QMessageBox.information(self, "成功", f"策略已生成:\n{result.details.get('strategy_file', '')}")
+                    self._load_strategies()
+                else:
+                    QMessageBox.warning(self, "失败", result.summary)
+        except Exception as e:
+            QMessageBox.warning(self, "错误", str(e))
     
     def _preview_strategy(self, item, col):
         """预览策略代码"""
@@ -533,62 +630,9 @@ class DataManagerPanel(QWidget):
             try:
                 with open(path, 'r', encoding='utf-8') as f:
                     code = f.read()
-                self.strategy_preview.setPlainText(code)
+                self.code_preview.setPlainText(code)
             except Exception as e:
-                self.strategy_preview.setPlainText(f"读取失败: {e}")
-    
-    def _open_reports_folder(self):
-        """打开报告目录"""
-        reports_dir = Path(__file__).parent.parent.parent / "reports"
-        reports_dir.mkdir(exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(reports_dir)))
-    
-    def _open_strategies_folder(self):
-        """打开策略目录"""
-        strategies_dir = Path(__file__).parent.parent.parent / "strategies" / "ptrade"
-        strategies_dir.mkdir(parents=True, exist_ok=True)
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(strategies_dir)))
-    
-    def _clean_old_reports(self):
-        """清理旧报告"""
-        reply = QMessageBox.question(
-            self, "确认", "确定要删除7天前的报告吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            import time
-            threshold = time.time() - 7 * 24 * 3600
-            
-            reports_dir = Path(__file__).parent.parent.parent / "reports"
-            deleted = 0
-            
-            for f in reports_dir.rglob("*.html"):
-                if f.stat().st_mtime < threshold:
-                    f.unlink()
-                    deleted += 1
-            
-            QMessageBox.information(self, "完成", f"已删除 {deleted} 个旧报告")
-            self._refresh_reports()
-    
-    def _export_strategy(self):
-        """导出策略"""
-        selected = self.strategies_tree.currentItem()
-        if not selected:
-            QMessageBox.warning(self, "提示", "请先选择要导出的策略")
-            return
-        
-        path = selected.data(0, Qt.ItemDataRole.UserRole)
-        if not path:
-            return
-        
-        dest, _ = QFileDialog.getSaveFileName(
-            self, "导出策略", selected.text(0), "Python文件 (*.py)"
-        )
-        
-        if dest:
-            shutil.copy(path, dest)
-            QMessageBox.information(self, "完成", f"策略已导出到:\n{dest}")
+                self.code_preview.setPlainText(f"读取失败: {e}")
     
     def _export_database(self):
         """导出数据库"""
@@ -606,7 +650,6 @@ class DataManagerPanel(QWidget):
             export_data = {}
             for coll_name in db.list_collection_names():
                 docs = list(db[coll_name].find())
-                # 转换ObjectId
                 for doc in docs:
                     doc['_id'] = str(doc['_id'])
                     for k, v in doc.items():
@@ -617,58 +660,7 @@ class DataManagerPanel(QWidget):
             with open(dest_path, 'w', encoding='utf-8') as f:
                 json.dump(export_data, f, ensure_ascii=False, indent=2)
             
-            QMessageBox.information(self, "完成", f"数据已导出到:\n{dest_path}")
+            QMessageBox.information(self, "成功", f"数据已导出到:\n{dest_path}")
             
         except Exception as e:
             QMessageBox.warning(self, "导出失败", str(e))
-    
-    def _clean_database(self):
-        """清理数据库"""
-        reply = QMessageBox.question(
-            self, "确认", "确定要清理所有数据库数据吗？\n此操作不可恢复！",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            try:
-                from pymongo import MongoClient
-                client = MongoClient('localhost', 27017)
-                client.drop_database('trquant')
-                QMessageBox.information(self, "完成", "数据库已清理")
-                self._refresh_database()
-            except Exception as e:
-                QMessageBox.warning(self, "失败", str(e))
-    
-    def _clear_cache(self):
-        """清除全部缓存"""
-        reply = QMessageBox.question(
-            self, "确认", "确定要清除全部缓存吗？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            cache_dir = Path.home() / ".cache" / "trquant"
-            if cache_dir.exists():
-                shutil.rmtree(cache_dir)
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            
-            QMessageBox.information(self, "完成", "缓存已清除")
-            self._refresh_cache()
-    
-    def _clear_old_cache(self):
-        """清除7天前缓存"""
-        import time
-        threshold = time.time() - 7 * 24 * 3600
-        
-        cache_dir = Path.home() / ".cache" / "trquant"
-        deleted = 0
-        
-        if cache_dir.exists():
-            for f in cache_dir.rglob("*"):
-                if f.is_file() and f.stat().st_mtime < threshold:
-                    f.unlink()
-                    deleted += 1
-        
-        QMessageBox.information(self, "完成", f"已清除 {deleted} 个旧缓存文件")
-        self._refresh_cache()
-
