@@ -61,13 +61,18 @@ export class WorkflowPanel {
         extensionUri: vscode.Uri,
         client: TRQuantClient
     ): WorkflowPanel {
+        console.log('[WorkflowPanel] createOrShow 被调用');
+        logger.info('创建工作流面板', MODULE);
+        
         const column = vscode.ViewColumn.One;
 
         if (WorkflowPanel.currentPanel) {
+            console.log('[WorkflowPanel] 面板已存在，显示现有面板');
             WorkflowPanel.currentPanel._panel.reveal(column);
             return WorkflowPanel.currentPanel;
         }
 
+        console.log('[WorkflowPanel] 创建新的工作流面板');
         const panel = vscode.window.createWebviewPanel(
             'trquantWorkflow',
             '🔄 集成工作流程',
@@ -80,6 +85,8 @@ export class WorkflowPanel {
         );
 
         WorkflowPanel.currentPanel = new WorkflowPanel(panel, extensionUri, client);
+        console.log('[WorkflowPanel] 工作流面板创建成功');
+        logger.info('工作流面板创建成功', MODULE);
         return WorkflowPanel.currentPanel;
     }
 
@@ -734,9 +741,20 @@ export function registerWorkflowPanel(
 ): void {
     context.subscriptions.push(
         vscode.commands.registerCommand('trquant.openWorkflowPanel', () => {
-            WorkflowPanel.createOrShow(context.extensionUri, client);
+            console.log('[WorkflowPanel] trquant.openWorkflowPanel 命令被触发');
+            logger.info('打开工作流面板命令被触发', MODULE);
+            try {
+                WorkflowPanel.createOrShow(context.extensionUri, client);
+                console.log('[WorkflowPanel] 工作流面板已创建');
+                logger.info('工作流面板已创建', MODULE);
+            } catch (error) {
+                console.error('[WorkflowPanel] 创建工作流面板失败:', error);
+                logger.error(`创建工作流面板失败: ${error}`, MODULE);
+                vscode.window.showErrorMessage(`打开工作流面板失败: ${error}`);
+            }
         })
     );
     
     logger.info('工作流面板已注册（复用桌面系统代码）', MODULE);
+    console.log('[WorkflowPanel] 工作流面板命令已注册: trquant.openWorkflowPanel');
 }

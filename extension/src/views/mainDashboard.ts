@@ -156,7 +156,14 @@ export class MainDashboard {
             
             // 打开工作流面板
             case 'openWorkflowPanel':
-                await vscode.commands.executeCommand('trquant.openWorkflowPanel');
+                console.log('[MainDashboard] 准备执行 openWorkflowPanel 命令');
+                try {
+                    await vscode.commands.executeCommand('trquant.openWorkflowPanel');
+                    console.log('[MainDashboard] openWorkflowPanel 命令执行完成');
+                } catch (error) {
+                    console.error('[MainDashboard] openWorkflowPanel 命令执行失败:', error);
+                    vscode.window.showErrorMessage(`打开工作流面板失败: ${error}`);
+                }
                 break;
             
             // 文件管理系统功能
