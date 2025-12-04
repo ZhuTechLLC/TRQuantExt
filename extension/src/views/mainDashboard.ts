@@ -1955,6 +1955,17 @@ export class MainDashboard {
     <script>
         const vscode = acquireVsCodeApi();
         
+        // 打开工作流面板
+        function openWorkflowPanel() {
+            console.log('[MainDashboard HTML] 点击打开工作流面板按钮');
+            try {
+                vscode.postMessage({command: 'openWorkflowPanel'});
+                console.log('[MainDashboard HTML] 消息已发送');
+            } catch (error) {
+                console.error('[MainDashboard HTML] 发送消息失败:', error);
+            }
+        }
+        
         // 更新市场状态
         function updateMarketStatus(data) {
             if (!data) return;
