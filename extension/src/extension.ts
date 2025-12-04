@@ -301,7 +301,13 @@ def handle_data(context, data):
         
         // 立即注册工作流面板命令（确保在激活时就能使用）
         console.log('[TRQuant] 立即注册工作流面板命令...');
-        registerWorkflowPanel(context, client);
+        try {
+            registerWorkflowPanel(context, client);
+            console.log('[TRQuant] ✅ 工作流面板命令注册完成');
+        } catch (error) {
+            console.error('[TRQuant] ❌ 工作流面板命令注册失败:', error);
+            logger.error(`工作流面板命令注册失败: ${error}`, MODULE);
+        }
 
         // 注册项目资源管理器
         registerProjectExplorer(context);
