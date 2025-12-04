@@ -739,45 +739,68 @@ export function registerWorkflowPanel(
     context: vscode.ExtensionContext,
     client: TRQuantClient
 ): void {
-    console.log('[WorkflowPanel] 开始注册工作流面板命令...');
+    console.log('[WorkflowPanel] ========== 开始注册工作流面板命令 ==========');
     logger.info('开始注册工作流面板', MODULE);
     
-    const disposable = vscode.commands.registerCommand('trquant.openWorkflowPanel', () => {
-        console.log('[WorkflowPanel] ✅ trquant.openWorkflowPanel 命令被触发');
-        logger.info('打开工作流面板命令被触发', MODULE);
-        try {
-            WorkflowPanel.createOrShow(context.extensionUri, client);
-            console.log('[WorkflowPanel] ✅ 工作流面板已创建');
-            logger.info('工作流面板已创建', MODULE);
-        } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error('[WorkflowPanel] ❌ 创建工作流面板失败:', msg);
-            logger.error(`创建工作流面板失败: ${msg}`, MODULE);
-            vscode.window.showErrorMessage(`打开工作流面板失败: ${msg}`);
-        }
-    });
+    // 验证参数
+    if (!context) {
+        console.error('[WorkflowPanel] ❌ context 参数为空');
+        throw new Error('context 参数不能为空');
+    }
+    if (!client) {
+        console.error('[WorkflowPanel] ❌ client 参数为空');
+        throw new Error('client 参数不能为空');
+    }
     
-    context.subscriptions.push(disposable);
+    console.log('[WorkflowPanel] 参数验证通过，开始注册命令...');
     
-    // 立即验证命令是否注册成功（同步检查）
-    console.log('[WorkflowPanel] 命令已注册到context.subscriptions');
-    
-    // 异步验证命令是否在VS Code中可用
-    setTimeout(() => {
-        vscode.commands.getCommands().then(commands => {
-            if (commands.includes('trquant.openWorkflowPanel')) {
-                console.log('[WorkflowPanel] ✅ 命令注册验证成功: trquant.openWorkflowPanel');
-                logger.info('工作流面板命令注册验证成功', MODULE);
-            } else {
-                console.error('[WorkflowPanel] ❌ 命令注册验证失败: trquant.openWorkflowPanel 不在命令列表中');
-                console.error('[WorkflowPanel] 可用命令列表（前20个）:', commands.slice(0, 20));
-                logger.error('工作流面板命令注册验证失败', MODULE);
+    try {
+        const disposable = vscode.commands.registerCommand('trquant.openWorkflowPanel', () => {
+            console.log('[WorkflowPanel] ✅ trquant.openWorkflowPanel 命令被触发');
+            logger.info('打开工作流面板命令被触发', MODULE);
+            try {
+                WorkflowPanel.createOrShow(context.extensionUri, client);
+                console.log('[WorkflowPanel] ✅ 工作流面板已创建');
+                logger.info('工作流面板已创建', MODULE);
+            } catch (error) {
+                const msg = error instanceof Error ? error.message : String(error);
+                console.error('[WorkflowPanel] ❌ 创建工作流面板失败:', msg);
+                logger.error(`创建工作流面板失败: ${msg}`, MODULE);
+                vscode.window.showErrorMessage(`打开工作流面板失败: ${msg}`);
             }
-        }, (err: any) => {
-            console.error('[WorkflowPanel] 验证命令时出错:', err);
         });
-    }, 1000);
-    
-    logger.info('工作流面板已注册（复用桌面系统代码）', MODULE);
-    console.log('[WorkflowPanel] 工作流面板命令已注册: trquant.openWorkflowPanel');
+        
+        console.log('[WorkflowPanel] 命令已注册，disposable:', disposable);
+        context.subscriptions.push(disposable);
+        console.log('[WorkflowPanel] 命令已添加到context.subscriptions，当前订阅数:', context.subscriptions.length);
+        
+        // 立即验证命令是否注册成功（同步检查）
+        console.log('[WorkflowPanel] 命令已注册到context.subscriptions');
+        
+        // 异步验证命令是否在VS Code中可用
+        setTimeout(() => {
+            vscode.commands.getCommands().then(commands => {
+                console.log('[WorkflowPanel] 检查命令列表，总数:', commands.length);
+                if (commands.includes('trquant.openWorkflowPanel')) {
+                    console.log('[WorkflowPanel] ✅ 命令注册验证成功: trquant.openWorkflowPanel');
+                    logger.info('工作流面板命令注册验证成功', MODULE);
+                } else {
+                    console.error('[WorkflowPanel] ❌ 命令注册验证失败: trquant.openWorkflowPanel 不在命令列表中');
+                    console.error('[WorkflowPanel] 搜索trquant相关命令:', commands.filter(c => c.startsWith('trquant.')));
+                    logger.error('工作流面板命令注册验证失败', MODULE);
+                }
+            }, (err: any) => {
+                console.error('[WorkflowPanel] 验证命令时出错:', err);
+            });
+        }, 1000);
+        
+        logger.info('工作流面板已注册（复用桌面系统代码）', MODULE);
+        console.log('[WorkflowPanel] ========== 工作流面板命令注册完成 ==========');
+    } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error('[WorkflowPanel] ❌ 注册命令时发生异常:', msg);
+        console.error('[WorkflowPanel] 错误堆栈:', error instanceof Error ? error.stack : '无堆栈信息');
+        logger.error(`注册工作流面板命令时发生异常: ${msg}`, MODULE);
+        throw error;
+    }
 }
